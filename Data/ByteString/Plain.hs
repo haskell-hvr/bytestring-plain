@@ -1,4 +1,4 @@
-{-# LANGUAGE MagicHash, DeriveDataTypeable #-}
+{-# LANGUAGE MagicHash, DeriveDataTypeable, UnliftedFFITypes #-}
 
 -- |
 -- Stability   : experimental
@@ -103,12 +103,10 @@ empty = unsafePerformIO $ do
 
 fromStrict :: B.ByteString -> ByteString
 fromStrict (B.PS _ _ 0) = empty
-fromStrict (B.PS (ForeignPtr addr (PlainPtr mbarr#)) 0 l)
-  | neAddr# addr' addr = error "internal error" -- sanity check
+fromStrict (B.PS (ForeignPtr _ (PlainPtr mbarr#)) 0 l)
   | l' == l            = PBS mbarr#
   where
     l' = I# (sizeofMutableByteArray# mbarr#)
-    addr' = byteArrayContents# (unsafeCoerce# mbarr#)
 fromStrict bs = fromStrict (B.copy bs) -- this assumes
                     -- ByteString internals return a trimmed
                     -- ForeignPtr/PlainPtr string; otherwise there's
