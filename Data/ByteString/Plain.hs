@@ -22,7 +22,7 @@ module Data.ByteString.Plain (
     , length
     ) where
 
-import           Control.DeepSeq (NFData)
+import           Control.DeepSeq (NFData(rnf))
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as B
 import           Data.Hashable (Hashable(hashWithSalt))
@@ -135,7 +135,7 @@ length (PBS mbarr#) = I# (sizeofMutableByteArray# mbarr#)
 {-# INLINE length #-}
 
 -- WHNF == NF
-instance NFData ByteString
+instance NFData ByteString where rnf x = seq x ()
 
 -- the following instances are implement via strict 'B.ByteString's;
 -- In the future "native" implementations shall be provided if they
