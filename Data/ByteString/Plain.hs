@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                      #-}
 {-# LANGUAGE DeriveDataTypeable       #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE MagicHash                #-}
@@ -150,7 +151,7 @@ instance Eq ByteString where
 
 instance Ord ByteString where
     compare (PBS mbarr1#) (PBS mbarr2#) =
-      B.accursedUnutterablePerformIO $ do
+      inlinePerformIO $ do
         let len1 = I# (sizeofMutableByteArray# mbarr1#)
             len2 = I# (sizeofMutableByteArray# mbarr2#)
             p1 = byteArrayContents# (unsafeCoerce# mbarr1#)
@@ -172,6 +173,19 @@ instance Show ByteString where
 
 instance Read ByteString where
     readsPrec p str = [ (fromStrict x, y) | (x, y) <- readsPrec p str ]
+
+-- ---------------------------------------------------------------------
+--
+-- Utils
+--
+
+inlinePerformIO :: IO a -> a
+#if MIN_VERSION_bytestring(0,10,6)
+inlinePerformIO = B.accursedUnutterablePerformIO
+#else
+inlinePerformIO = B.inlinePerformIO
+#endif
+{-# INLINE inlinePerformIO #-}
 
 -- ---------------------------------------------------------------------
 --
