@@ -1,4 +1,8 @@
-{-# LANGUAGE MagicHash, DeriveDataTypeable, UnliftedFFITypes #-}
+{-# LANGUAGE CPP                      #-}
+{-# LANGUAGE DeriveDataTypeable       #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE MagicHash                #-}
+{-# LANGUAGE UnliftedFFITypes         #-}
 
 -- |
 -- Stability   : experimental
@@ -22,16 +26,17 @@ module Data.ByteString.Plain (
     , length
     ) where
 
-import           Control.DeepSeq (NFData(rnf))
-import qualified Data.ByteString as B
+import           Control.DeepSeq          (NFData (rnf))
+import qualified Data.ByteString          as B
 import qualified Data.ByteString.Internal as B
-import           Data.Hashable (Hashable(hashWithSalt))
+import           Data.Hashable            (Hashable (hashWithSalt))
 import           Data.Typeable            (Typeable)
+import           Foreign.C.Types
 import           GHC.ForeignPtr
 import           GHC.Prim
 import           GHC.Types
-import           Prelude hiding (length, null)
-import           System.IO.Unsafe (unsafePerformIO)
+import           Prelude                  hiding (length, null)
+import           System.IO.Unsafe         (unsafePerformIO)
 
 -- |Compact heap representation a (strict) 'B.ByteString' can be (un)wrapped to/from.
 --
@@ -141,11 +146,21 @@ instance NFData ByteString where rnf x = seq x ()
 -- In the future "native" implementations shall be provided if they
 -- result being faster.
 instance Eq ByteString where
-    x == y  = toStrict x == toStrict y
+    x == y  = x `compare` y == EQ
     {-# INLINE (==) #-}
 
 instance Ord ByteString where
-    compare x y  = compare (toStrict x) (toStrict y)
+    compare (PBS mbarr1#) (PBS mbarr2#) =
+      inlinePerformIO $ do
+        let len1 = I# (sizeofMutableByteArray# mbarr1#)
+            len2 = I# (sizeofMutableByteArray# mbarr2#)
+            p1 = byteArrayContents# (unsafeCoerce# mbarr1#)
+            p2 = byteArrayContents# (unsafeCoerce# mbarr2#)
+
+        i <- memcmp p1 p2 (min len1 len2)
+        return $! case i `compare` 0 of
+          EQ  -> len1 `compare` len2
+          x   -> x
     {-# INLINE compare #-}
 
 instance Hashable ByteString where
@@ -158,3 +173,27 @@ instance Show ByteString where
 
 instance Read ByteString where
     readsPrec p str = [ (fromStrict x, y) | (x, y) <- readsPrec p str ]
+
+-- ---------------------------------------------------------------------
+--
+-- Utils
+--
+
+inlinePerformIO :: IO a -> a
+#if MIN_VERSION_bytestring(0,10,6)
+inlinePerformIO = B.accursedUnutterablePerformIO
+#else
+inlinePerformIO = B.inlinePerformIO
+#endif
+{-# INLINE inlinePerformIO #-}
+
+-- ---------------------------------------------------------------------
+--
+-- Standard C functions
+--
+
+foreign import ccall unsafe "string.h memcmp" c_memcmp
+    :: Addr# -> Addr# -> CSize -> IO CInt
+
+memcmp :: Addr# -> Addr# -> Int -> IO CInt
+memcmp p q s = c_memcmp p q (fromIntegral s)
